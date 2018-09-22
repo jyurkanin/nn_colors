@@ -1,0 +1,188 @@
+#include "engine.hpp"
+#include <ncurses.h>
+#include <stdlib.h>
+#include <vector>
+#include <unistd.h>
+#include <string>
+
+
+
+void Engine::start(int *input, int *output, int _length){
+    length = _length;
+    
+    Display *dpy = XOpenDisplay(0);
+    int blackColor = BlackPixel(dpy, DefaultScreen(dpy));
+    int whiteColor = WhitePixel(dpy, DefaultScreen(dpy));
+
+    Window w = XCreateSimpleWindow(dpy, DefaultRootWindow(dpy), 0, 0, 200, 200, 0, blackColor, blackColor);
+    XSelectInput(dpy, w, StructureNotifyMask);
+    XMapWindow(dpy, w);
+    GC gc = XCreateGC(dpy, w, 0, 0);
+
+    XEvent e;
+    do{
+        XNextEvent(dpy, &e);
+    } while(e.type == MapNotify);
+    
+    XSetForeground(dpy, gc, whiteColor); //draw with white.
+    cout << XFillRectangle(dpy, w, gc, 0, 0, 32, 32) << "\n"; 
+    XFlush(dpy);
+    sleep(10);
+    
+    /*initscr();
+    clear();
+    refresh();
+    start_color();
+    init_pair(0, COLOR_BLACK, COLOR_BLACK);
+    init_pair(1, COLOR_RED, COLOR_BLACK);
+    init_pair(2, COLOR_YELLOW, COLOR_BLACK);
+    init_pair(3, COLOR_GREEN, COLOR_BLACK);
+    init_pair(4, COLOR_CYAN, COLOR_BLACK);
+    init_pair(5, COLOR_BLUE, COLOR_BLACK);
+    init_pair(6, COLOR_MAGENTA, COLOR_BLACK);
+    init_pair(7, COLOR_WHITE, COLOR_BLACK);
+    noecho();*/
+    
+    for(int i = 0; i < MAP_WIDTH; i++){
+        for(int j = 0; j < MAP_HEIGHT; j++){
+            nodeMap[i][j] = 0;
+        }
+    }
+    
+    start_node = nodeMap[0][0] = new Node(START_NODE, 0, 0);
+//    stop_node = nodeMap[MAP_WIDTH-1][0] = new Node(STOP_NODE, MAP_WIDTH - 1, 0);
+    
+    start_node->setStream(input);
+    //stop_node->setStream(output);
+    
+    for(int i = 0; i < MAP_WIDTH; i++){
+        for(int j = 0; j < MAP_HEIGHT; j++){
+            //if(nodeMap[i][j]->node_type != STOP_NODE || nodeMap[i][j]->node_type != START_NODE)
+            if(!nodeMap[i][j])
+                nodeMap[i][j] = new Node(TRANS_NODE, i, j);
+        }
+    }
+
+    std::vector<Link*> link_ptrs; //for later deletion
+//    start_node->connect(nodeMap, link_ptrs); //recursive boi here. //Let this be a lesson to you kids that recursion is always a stupid fucking idea
+    for(int i = 0; i < MAP_WIDTH; i++){
+        for(int j = 0; j < MAP_HEIGHT; j++){
+            for(int k = 0; k < 3; k++){
+                for(int l = 0; l < 3; l++){
+                    if(!nodeMap[i][j]->links[k][l] && //no link here boi
+                       (i+k-1) >= 0 && (j+l-1) >= 0 && (i+k-1) < MAP_WIDTH && (j+l-1) < MAP_HEIGHT){ //is my boi in bounds
+                        nodeMap[i+k-1][j+l-1]->links[2-k][2-l] = nodeMap[i][j]->links[k][l] = new Link(); // i think this is right
+                        nodeMap[i][j]->links[k][l]->decay = 0;
+                        nodeMap[i][j]->links[k][l]->value = (double) rand() / RAND_MAX;
+                    }
+                }
+            }
+        }
+    }
+    
+    /*double average_output;
+    int num_fired;
+    for(int count = 0; count < length; count++){
+        updateStreams();
+        do{
+            average_output = 0;
+            num_fired = 0;
+            for(int i = 0; i < MAP_WIDTH; i++){ //TODO: activation order might matter. experiment later.
+                for(int j = 0; j < MAP_HEIGHT; j++){
+                    nodeMap[i][j]->transfer(nodeMap);
+                    if(nodeMap[i][j]->node_state == FIRED){
+                        average_output += nodeMap[i][j]->getOutput();
+                        num_fired++;
+                    }
+                    
+                }
+            }
+            
+            display(average_output/num_fired);
+            getch();
+            clear();
+            
+            for(int i = 0; i < MAP_WIDTH; i++){ //TODO: activation order might matter. experiment later.
+                for(int j = 0; j < MAP_HEIGHT; j++){
+                    nodeMap[i][j]->evaluate(stop_node);
+                }
+            }
+        }
+        while(num_fired); //signal should decay over time.
+        }*/
+    
+    
+    for(int i = 0; i < MAP_WIDTH; i++){
+        for(int j = 0; j < MAP_HEIGHT; j++){
+            delete nodeMap[i][j];
+        }
+    }
+
+    for(int i = 0; i < link_ptrs.size(); i++){
+        delete link_ptrs[i];
+    }
+    
+//    endwin();
+}
+
+int count = 0;
+int num_fired = 0;
+
+void Engine::tick(){
+    double average_output;
+    int width, height;
+    if(!num_fired) updateStreams();
+    average_output = 0;
+    num_fired = 0;
+    for(int i = 0; i < MAP_WIDTH; i++){ //TODO: activation order might matter. experiment later.
+        for(int j = 0; j < MAP_HEIGHT; j++){
+            nodeMap[i][j]->transfer(nodeMap);
+            if(nodeMap[i][j]->node_state == FIRED){
+                average_output += nodeMap[i][j]->getOutput();
+                num_fired++;
+            }
+            
+        }
+    }
+    
+    for(int i = 0; i < MAP_WIDTH; i++){ //TODO: activation order might matter. experiment later.
+        for(int j = 0; j < MAP_HEIGHT; j++){
+            nodeMap[i][j]->evaluate(stop_node);
+        }
+    }
+}
+
+void Engine::updateStreams(){    
+    start_node->setOutput((int) *(start_node->stream++));
+    start_node->node_state = FIRED;
+}
+
+void Engine::display(double mean){
+    int color;
+    for(int i = 0; i < MAP_WIDTH; i++){
+        for(int j = 0; j < MAP_HEIGHT; j++){
+            color = ((int) 4*nodeMap[i][j]->getOutput()/mean);
+            if(color > 7)
+                color = 7;
+            //else if(color == 0)
+            //    continue;
+            attron(COLOR_PAIR(color));
+            repaintNode(nodeMap[i][j]);
+            //mvaddstr(nodeMap[i][j]->y, nodeMap[i][j]->x, std::to_string(color).c_str());
+            //repaintNode(nodeMap[i][j]);
+            attroff(COLOR_PAIR(color));
+        }
+    }
+}
+
+void Engine::repaintNode(Node *node){
+    /*if(node->links[0][1]){
+        mvaddstr(4+(node->x*3), 24+(40*node->y), std::to_string(node->links[0][1]->value).c_str());
+        mvaddstr(4+(node->x*3), 34+(40*node->y), std::to_string(node->links[0][1]->decay).c_str());
+        }*/
+    mvaddstr((node->x), (14*node->y), std::to_string(node->getOutput()).c_str());
+    /*if(node->links[2][1]){
+        mvaddstr(6+(node->x*3), 24+(40*node->y), std::to_string(node->links[2][1]->value).c_str());
+        mvaddstr(6+(node->x*3), 34+(40*node->y), std::to_string(node->links[2][1]->decay).c_str());
+        }*/
+}

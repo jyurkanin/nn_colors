@@ -1,0 +1,20 @@
+#include "node.hpp"
+#include "const.hpp"
+#include <X11/Xlib.h>
+
+#ifndef __ENGINE_H__
+#define __ENGINE_H__
+
+class Engine{
+public:
+    Node *nodeMap[MAP_WIDTH][MAP_HEIGHT];
+    Node *start_node;
+    Node *stop_node;
+    int length;
+    void tick();
+    void start(int *input, int *output, int _length);
+    void display(double mean);
+    void repaintNode(Node *node);
+    void updateStreams();
+};
+#endif

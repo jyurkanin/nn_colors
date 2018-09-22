@@ -1,0 +1,9 @@
+
+#ifndef __CONST_H__
+#define __CONST_H__
+
+#define MAP_WIDTH 20
+#define MAP_HEIGHT 20
+#define R_SEED 1
+
+#endif
